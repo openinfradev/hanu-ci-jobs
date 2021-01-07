@@ -1,0 +1,185 @@
+@Library('jenkins-pipeline-library@main') _
+
+// branch repositories and update pipeline library branch reference
+def branch(String repo, String src, String dst, String srcTag, String dstTag) {
+  println("Branching ${repo}, src: ${src}, dst: ${dst}, tag: ${dstTag}")
+  dir(repo) {
+    checkout(
+      changelog: false,
+      poll: false,
+      scm: [
+        $class: 'GitSCM',
+        branches: [
+          [
+            name: "*/${src}"
+          ]
+        ],
+        doGenerateSubmoduleConfigurations: false,
+        extensions: [
+          [
+            $class: 'CleanCheckout'
+          ]
+        ],
+        submoduleCfg: [],
+        userRemoteConfigs: [
+          [
+            name: 'origin',
+            url: "${repoBaseUrl}/${repo}.git"
+          ]
+        ]
+      ]
+    )
+
+    sh "git checkout -B ${dst}"
+
+    // modify branch reference to pipeline library in any repo that has a Jenkinsfile
+    if (fileExists('Jenkinsfile')) {
+      sh "sed -i 's/pipeline-library@[a-zA-Z0-9\\.-]*/pipeline-library@${dstTag}/' Jenkinsfile"
+    }
+
+    if (repo == 'tacoplay') {
+      if (dst.startsWith('release')) {
+        sh "sed -i 's/${srcTag}/${dstTag}/' VERSIONS"
+        sh "sed -i 's/taco_version:.*/taco_version: ${dstTag}/g' defaults/global_taco.yml"
+      } else {
+        sh "sed -i 's/${src}/${dstTag}/' VERSIONS"
+      }
+    }
+
+    // if modificatiosn have been made commit them
+    def mods = sh(returnStdout: true, script: 'git ls-files -m').trim()
+    if (mods.size() > 0) {
+      sh "git commit -a -m 'update repo branch references'"
+    }
+
+    sh "git push --force origin ${dst}"
+  }
+}
+
+def tag(String repo, String branch, String version) {
+  println("repo: ${repo}, branch: ${branch}, version: ${version}")
+  dir(repo) {
+    checkout(
+      changelog: false,
+      poll: false,
+      scm: [
+        $class: 'GitSCM',
+        branches: [
+          [
+            name: "*/${branch}"
+          ]
+        ],
+        doGenerateSubmoduleConfigurations: false,
+        submoduleCfg: [],
+        userRemoteConfigs: [
+          [
+            credentialsId: 'hanu-github-token-new',
+            name: 'origin',
+            url: "${repoBaseUrl}/${repo}.git"
+          ]
+        ]
+      ]
+    )
+
+    // cleanup old tags on HEAD
+    def tags = sh(returnStdout: true, script: 'git tag').trim().split()
+    if (tags.contains(version)) {
+      sh("git tag -d ${version}")
+    }
+
+    sh """
+      git tag ${version}
+      git push --tags --force origin ${branch}
+    """
+  }
+}
+
+pipeline {
+  agent {
+    node {
+      label 'openstack-slave'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+    }
+  }
+  parameters {
+    string(name: 'SRC_BRANCH',
+      defaultValue: 'main',
+      description: 'src branch name')
+    string(name: 'SRC_TAG',
+      defaultValue: '',
+      description: 'source tag (if any)')
+    string(name: 'DST_BRANCH',
+      defaultValue: '',
+      description: 'dst branch name - eg, release-vOO')
+    string(name: 'DST_TAG',
+      defaultValue: '',
+      description: 'destination tag')
+  }
+  options {
+    timeout(time: 60, unit: 'MINUTES')
+    timestamps()
+  }
+
+  stages {
+
+    stage ('Init') {
+      steps {
+          script {
+            baseOS = 'ubuntu'
+            repoBaseUrl = 'git@github.com:openinfradev'
+
+            repos = [
+              //'tacoplay', 'taco-helm', 'hanu-site-yaml'
+              'tacoplay'
+            ]
+            
+            sh """
+              git config --global user.email "newfruk2@naver.com"
+              git config --global user.name "hanu-jenkins"
+            """
+          }
+      }
+    }
+
+    stage ('Validation') {
+      steps {
+          script {
+            if (params.DST_TAG.empty) {
+              error('dst tag mandatory, aborting')
+            }
+            srcBranch = params.SRC_BRANCH
+            dstBranch = params.DST_BRANCH
+            srcTag = params.SRC_TAG
+            dstTag = params.DST_TAG
+
+            if (!params.SRC_BRANCH || params.SRC_BRANCH.empty) {
+              println('SRC_BRANCH was not specified. Using main branch..')
+              srcBranch = 'main'
+            }
+            println("DstTag:\t${dstTag}")
+          }
+      }
+    }
+
+    stage ('Branch Git') {
+      steps {
+          script {
+            repos.each { repo ->
+              branch("${repo}", srcBranch, dstBranch, srcTag, dstTag)
+              tag("${repo}", dstBranch, dstTag)
+            }
+          }
+      }
+    }
+
+  }
+
+  post {
+    success {
+      notifyCompleted(true)
+    }
+    failure {
+      notifyCompleted(false)
+    }
+  }
+}

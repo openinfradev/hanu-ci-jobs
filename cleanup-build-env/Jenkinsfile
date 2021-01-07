@@ -1,0 +1,39 @@
+@Library('jenkins-pipeline-library@main') _
+
+pipeline {
+  agent {
+    node {
+      label 'openstack-slave'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+    }
+  }
+  parameters {
+    string(name: 'PREFIX',
+      defaultValue: 'k8s_endpoint',
+      description: 'Prefix of k8s cluster endpoint data in etcd')
+  }
+  options {
+    timeout(time: 30, unit: 'MINUTES')
+    timestamps()
+  }
+
+  stages {
+    stage ('Prepare Tacoplay') {
+      steps {
+        script {
+          cleanupDanglingEndpoints(params.PREFIX, 'hanu-prod')
+        }
+      }
+    }
+  }
+
+
+  post {
+    success {
+      notifyCompleted(true)
+    }
+    failure {
+      notifyCompleted(false)
+    }
+  }
+}
