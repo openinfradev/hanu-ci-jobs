@@ -1,0 +1,149 @@
+@Library('jenkins-pipeline-library@main') _
+
+pipeline {
+  agent {
+    node {
+      label 'site-prepare'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+    }
+  }
+  parameters {
+    string(name: 'TACOPLAY_VERSION',
+      defaultValue: 'refactoring',
+      description: 'branch or tag of tacoplay (Eg, \'master\' or \'2.0.0\'')
+    string(name: 'TARGET_SITE',
+      defaultValue: 'gate-centos-lb-ceph-offline-multinodes',
+      description: 'target site (inventory) name for manifest preparation')
+    string(name: 'INCLUDED_APPS',
+      defaultValue: 'openstack,lma',
+      description: 'Apps to include in tarball? (comma-separated list)')
+    string(name: 'OPENSTACK_RELEASE',
+      defaultValue: 'stein',
+      description: 'openstack_release for manifest selection (Eg, \'queens\' or \'stein\'')
+    booleanParam(name: 'OVERRIDE_MANIFEST_VERSIONS',
+      defaultValue: false,
+      description: 'override armada-manifest version in VERSIONS file?')
+    string(name: 'ARMADA_MANIFEST_VERSION',
+      defaultValue: 'N/A',
+      description: 'branch or tag of armada-manifest for image-pull (Eg, \'master\' or \'2.0.0\'')
+  }
+  environment {
+    KUBECONFIG = "/root/.kube/config"
+    ANSIBLE_INVALID_TASK_ATTRIBUTE_FAILED = "False"
+  }
+  options {
+    timeout(time: 120, unit: 'MINUTES')
+    timestamps()
+  }
+
+  stages {
+    stage ('Run') {
+      steps {
+        container('common') {
+          script {
+            sh """
+              cp /root/.netrc ~/.netrc
+              yum install -y git iproute net-tools
+              git clone https://github.com/openinfradev/tacoplay.git
+              git clone https://tde.sktelecom.com/stash/scm/oreotools/vslab-inventories.git
+              cp -r vslab-inventories/${params.TARGET_SITE} tacoplay/inventory/
+            """
+
+            dir('tacoplay') {
+              sh "git checkout ${params.TACOPLAY_VERSION}"
+
+              // This might be going to be deprecated soon.
+              if (params.OVERRIDE_MANIFEST_VERSIONS) {
+                sh """
+                  cat VERSIONS | grep -m 1 armada  >> version_new
+                  cat VERSIONS | grep kubespray  >> version_new
+                  cat VERSIONS | grep -m 1 openstack-helm >> version_new
+                  cat VERSIONS | grep -m 1 openstack-helm-infra >> version_new
+                  cat VERSIONS | grep ceph-ansible >> version_new
+                  cat VERSIONS | grep manifests | awk '\$3="${params.ARMADA_MANIFEST_VERSION}"' >> version_new
+                  cat version_new
+                  mv VERSIONS VERSIONS.bak
+                  mv version_new VERSIONS
+                """
+              }
+
+              // Should pass this format: '{"taco_apps": ['openstack','lma']}'
+              tacoplay_params = "-e '{\"taco_apps\": ["
+              add_openstack_param = false
+
+              if (params.INCLUDED_APPS) {
+                def app_list = params.INCLUDED_APPS.split(',')
+
+                app_list.eachWithIndex { app, index ->
+                  if ( app == 'openstack') {
+                    if (params.TARGET_SITE.startsWith('gate')) {
+                      sh "cp ./inventory/${params.TARGET_SITE}/${app}-manifest.yaml ./inventory/preparation/"
+                    } else {
+                      add_openstack_param = true
+                    }
+                  } else {
+                    sh "cp ./inventory/${params.TARGET_SITE}/${app}-manifest.yaml ./inventory/preparation/"
+                  }
+
+                  if ( index == app_list.length-1 ) {
+                    tacoplay_params += "'${app}'"
+                  } else {
+                   tacoplay_params += "'${app}',"
+                  }
+                }
+              }
+              tacoplay_params += "]}'"
+
+              if (params.TARGET_SITE.startsWith('gate')) {
+                // Necessary to make site-prepare task pull images from dev registry instead of release registry
+                tacoplay_params += " -e 'is_gating_test=true'"
+              } else if (add_openstack_param) {
+                tacoplay_params += " -e 'site_name=${params.TARGET_SITE} openstack_release=${params.OPENSTACK_RELEASE}'"
+              }
+
+              println("tacoplay_params: ${tacoplay_params}")
+
+              sh """
+                env | grep PATH
+                ./fetch-sub-projects.sh
+                python --version
+                yum install -y epel-release
+                yum install -y python-pip
+                pip install --upgrade pip
+                pip install -r requirements.txt
+
+                ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall,untagged --skip-tags upgrade -e @inventory/preparation/extra-vars.yml ${tacoplay_params}
+              """
+            }
+          }
+        }
+      }
+    }
+
+    stage ('Push artifact') {
+      steps {
+        container('common') {
+          script {
+            sh """
+              mv tacoplay.tar.gz tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz
+              mc --quiet -C /root/.mc cp tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz ${env.MINIO}/artifacts/
+
+              echo "tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz" > latest-${params.TARGET_SITE}
+              mc --quiet -C /root/.mc cp latest-${params.TARGET_SITE} ${env.MINIO}/artifacts/
+            """
+          }
+        }
+      }
+    }
+
+  }
+
+  post {
+    success {
+      notifyCompleted(true)
+    }
+    failure {
+      notifyCompleted(false)
+    }
+  }
+}
