@@ -47,6 +47,7 @@ pipeline {
               git clone https://github.com/openinfradev/tacoplay.git
               git clone https://tde.sktelecom.com/stash/scm/oreotools/vslab-inventories.git
               cp -r vslab-inventories/${params.TARGET_SITE} tacoplay/inventory/
+              mkdir ~/agent/docker_images || true
             """
 
             dir('tacoplay') {
