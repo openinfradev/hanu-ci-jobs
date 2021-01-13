@@ -40,7 +40,7 @@ pipeline {
               yum install -y git iproute net-tools
               git clone https://github.com/openinfradev/tacoplay.git
               git clone https://github.com/openinfradev/taco-gate-inventories.git
-              cp -r taco-gate-inventories/${params.TARGET_SITE} tacoplay/inventory/
+              cp -r taco-gate-inventories/inventories/${params.TARGET_SITE} tacoplay/inventory/
               mkdir ~/agent/docker_images || true
             """
 
@@ -74,10 +74,7 @@ pipeline {
               }
               tacoplay_params += "]}'"
 
-              if (params.TARGET_SITE.startsWith('gate')) {
-                // Necessary to make site-prepare task pull images from dev registry instead of release registry
-                tacoplay_params += " -e 'is_gating_test=true'"
-              } else if (add_openstack_param) {
+              if (add_openstack_param) {
                 tacoplay_params += " -e 'site_name=${params.TARGET_SITE} openstack_release=${params.OPENSTACK_RELEASE}'"
               }
 
