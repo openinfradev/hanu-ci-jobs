@@ -34,13 +34,20 @@ pipeline {
     stage ('Run') {
       steps {
         container('common') {
+          checkout([$class: 'GitSCM',
+                branches: [[name: '*/main' ]],
+                extensions: scm.extensions,
+                userRemoteConfigs: [[
+                    url: 'git@github.com:openinfradev/taco-gate-inventories.git',
+                    credentialsId: 'jenkins-to-github-key'
+                ]]
+            ])
           script {
             sh """
               cp /root/.netrc ~/.netrc
               yum install -y git iproute net-tools
               git clone https://github.com/openinfradev/tacoplay.git
-              git clone https://github.com/openinfradev/taco-gate-inventories.git
-              cp -r taco-gate-inventories/inventories/${params.TARGET_SITE} tacoplay/inventory/
+              cp -r inventories/${params.TARGET_SITE} tacoplay/inventory/
               mkdir ~/agent/docker_images || true
             """
 
