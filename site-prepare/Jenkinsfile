@@ -10,9 +10,9 @@ pipeline {
   parameters {
     string(name: 'TACOPLAY_VERSION',
       defaultValue: 'main',
-      description: 'branch or tag of tacoplay (Eg, \'master\' or \'2.0.0\'')
+      description: 'branch or tag of tacoplay (Eg, \'main\' or \'2.0.0\'')
     string(name: 'TARGET_SITE',
-      defaultValue: 'gate-centos-lb-ceph-offline-multinodes',
+      defaultValue: 'gate-centos-lb-ceph-online-multinodes',
       description: 'target site (inventory) name for manifest preparation')
     string(name: 'INCLUDED_APPS',
       defaultValue: 'openstack,lma',
@@ -20,12 +20,6 @@ pipeline {
     string(name: 'OPENSTACK_RELEASE',
       defaultValue: 'stein',
       description: 'openstack_release for manifest selection (Eg, \'queens\' or \'stein\'')
-    booleanParam(name: 'OVERRIDE_MANIFEST_VERSIONS',
-      defaultValue: false,
-      description: 'override armada-manifest version in VERSIONS file?')
-    string(name: 'ARMADA_MANIFEST_VERSION',
-      defaultValue: 'N/A',
-      description: 'branch or tag of armada-manifest for image-pull (Eg, \'master\' or \'2.0.0\'')
   }
   environment {
     KUBECONFIG = "/root/.kube/config"
@@ -45,28 +39,13 @@ pipeline {
               cp /root/.netrc ~/.netrc
               yum install -y git iproute net-tools
               git clone https://github.com/openinfradev/tacoplay.git
-              git clone https://tde.sktelecom.com/stash/scm/oreotools/vslab-inventories.git
-              cp -r vslab-inventories/${params.TARGET_SITE} tacoplay/inventory/
+              git clone https://github.com/openinfradev/taco-gate-inventories.git
+              cp -r taco-gate-inventories/${params.TARGET_SITE} tacoplay/inventory/
               mkdir ~/agent/docker_images || true
             """
 
             dir('tacoplay') {
               sh "git checkout ${params.TACOPLAY_VERSION}"
-
-              // This might be going to be deprecated soon.
-              if (params.OVERRIDE_MANIFEST_VERSIONS) {
-                sh """
-                  cat VERSIONS | grep -m 1 armada  >> version_new
-                  cat VERSIONS | grep kubespray  >> version_new
-                  cat VERSIONS | grep -m 1 openstack-helm >> version_new
-                  cat VERSIONS | grep -m 1 openstack-helm-infra >> version_new
-                  cat VERSIONS | grep ceph-ansible >> version_new
-                  cat VERSIONS | grep manifests | awk '\$3="${params.ARMADA_MANIFEST_VERSION}"' >> version_new
-                  cat version_new
-                  mv VERSIONS VERSIONS.bak
-                  mv version_new VERSIONS
-                """
-              }
 
               // Should pass this format: '{"taco_apps": ['openstack','lma']}'
               tacoplay_params = "-e '{\"taco_apps\": ["
