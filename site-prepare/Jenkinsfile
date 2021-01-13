@@ -9,7 +9,7 @@ pipeline {
   }
   parameters {
     string(name: 'TACOPLAY_VERSION',
-      defaultValue: 'refactoring',
+      defaultValue: 'main',
       description: 'branch or tag of tacoplay (Eg, \'master\' or \'2.0.0\'')
     string(name: 'TARGET_SITE',
       defaultValue: 'gate-centos-lb-ceph-offline-multinodes',
