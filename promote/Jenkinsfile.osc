@@ -97,7 +97,7 @@ def tag(String repo, String branch, String version) {
 pipeline {
   agent {
     node {
-      label 'openstack-prd'
+      label 'openstack-slave'
       customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
     }
   }

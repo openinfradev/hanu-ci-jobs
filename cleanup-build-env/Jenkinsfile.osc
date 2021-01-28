@@ -3,7 +3,7 @@
 pipeline {
   agent {
     node {
-      label 'openstack-prd'
+      label 'openstack-slave'
       customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
     }
   }
@@ -21,7 +21,7 @@ pipeline {
     stage ('Prepare Tacoplay') {
       steps {
         script {
-          cleanupDanglingEndpoints(params.PREFIX, 'taco-prod')
+          cleanupDanglingEndpoints(params.PREFIX, 'hanu-prod')
         }
       }
     }
