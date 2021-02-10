@@ -10,6 +10,7 @@ pipeline {
   agent {
     node {
       label 'openstack-slave-pangyo'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
     }
   }
   environment {
@@ -59,19 +60,31 @@ pipeline {
             ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "curl -L \"https://github.com/vmware-tanzu/sonobuoy/releases/download/v${version}/sonobuoy_${version}_linux_amd64.tar.gz\" --output ./sonobuoy.tar.gz && tar -xzf ./sonobuoy.tar.gz && chmod +x ./sonobuoy && sudo cp sonobuoy /usr/bin/ && rm -rf ./sonobuoy*"
           """
 
+          sonobuoy_status = sh(returnStatus: true,
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'")
+
+          if (!sonobuoy_status) {
+            sh "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy delete --wait'"
+          }
+
           if(params.SONOBUOY_MODE != 'custom' ) {
+            // Pre-defined mode test //
             sh "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} \"sonobuoy run --mode ${params.SONOBUOY_MODE} --e2e-parallel 30 --wait\""
           } else {
-            // Custom Test
+            // Custom Test //
             sh """
               ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy run --e2e-focus='EmptyDir volumes|deployment support rollover|Pods should support retrieving logs|Probing container should be restarted with|Probing container with readiness probe that fails|should update pod when spec was updated|should be consumable|Service endpoints latency|Scaling should happen in predictable order|should perform canary updates|should ensure that all pods are removed|DNS should provide DNS' --e2e-parallel 30 --wait"
             """
           }
 
+          result_file = sh(returnStdout: true,
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy retrieve'").trim()
+
           sh """
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy results \$(sonobuoy retrieve)"
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy results ${result_file}"
             #ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "cat ./results/plugins/e2e/results/global/e2e.log"
           """
+
           result = sh(returnStdout: true,
             script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'").trim()
           if(result.contains("failed")) {
