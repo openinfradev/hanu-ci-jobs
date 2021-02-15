@@ -21,8 +21,8 @@ pipeline {
       defaultValue: 'latest',
       description: 'version of sonobuoy. eg) 0.19.0')
     string(name: 'SONOBUOY_MODE',
-      defaultValue: 'quick',
-      description: 'non-disruptive-conformance | quick | certified-conformance')
+      defaultValue: 'custom',
+      description: 'custom | quick | non-disruptive-conformance | certified-conformance')
     string(name: 'KUBERNETES_CLUSTER_IP',
       defaultValue: '',
       description: 'set exising cluster\'s endpoint. the cluster can be connected with jenkins.key in taco production env. If blank, new aio kubernetes will be deployed to diagnose.')
