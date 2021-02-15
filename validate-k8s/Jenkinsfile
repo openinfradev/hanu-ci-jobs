@@ -82,7 +82,7 @@ pipeline {
 
           sh """
             ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy results ${result_file}"
-            #ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "cat ./results/plugins/e2e/results/global/e2e.log"
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "mkdir ./sonobuoy_result && tar xvf ${result_file} -C ./sonobuoy_result/ && tail -n 100 ./sonobuoy_result/plugins/e2e/results/global/e2e.log"
           """
 
           result = sh(returnStdout: true,
@@ -100,7 +100,7 @@ pipeline {
       script {
         if ( params.CLEANUP == true ) {
           sh """
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy delete --all --wait"
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy delete --all --wait && rm -rf ./sonobuoy_result"
           """
         } else {
           echo "Skipping sonobuoy cleanup.."
