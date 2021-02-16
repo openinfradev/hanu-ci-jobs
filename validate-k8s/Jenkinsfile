@@ -86,14 +86,15 @@ pipeline {
 
           sh """
             ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy results ${result_file}"
-            echo "Printing last 100 lines of sonobuoy log..."
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "mkdir ./sonobuoy_result && tar xvf ${result_file} -C ./sonobuoy_result/ && tail -n 100 ./sonobuoy_result/plugins/e2e/results/global/e2e.log"
+
+            echo "Printing failure log..."
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy results --mode detailed ${result_file} | jq '. | select(.status == \"failed\") | .details'"
           """
 
           result = sh(returnStdout: true,
             script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'").trim()
           if(result.contains("failed")) {
-            throw new Exception("sonobuoy e2e test is failed")
+            throw new Exception("sonobuoy e2e test failed.")
           }
         }
       }
