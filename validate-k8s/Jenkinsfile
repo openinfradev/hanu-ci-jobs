@@ -64,12 +64,15 @@ pipeline {
             ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "curl -L \"https://github.com/vmware-tanzu/sonobuoy/releases/download/v${version}/sonobuoy_${version}_linux_amd64.tar.gz\" --output ./sonobuoy.tar.gz && tar -xzf ./sonobuoy.tar.gz && chmod +x ./sonobuoy && sudo cp sonobuoy /usr/bin/ && rm -rf ./sonobuoy*"
           """
 
+          // Check if sonobuoy instance already exists //
           sonobuoy_status = sh(returnStatus: true,
             script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'")
 
           if (!sonobuoy_status) {
             sh "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy delete --wait'"
           }
+
+          println("*** Starting sonobuoy test ***")
 
           if(params.SONOBUOY_MODE != 'custom' ) {
             // Pre-defined mode test //
@@ -81,14 +84,11 @@ pipeline {
             """
           }
 
-          result_file = sh(returnStdout: true,
-            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy retrieve'").trim()
+          println("*** Showing test result ***")
 
           sh """
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy results ${result_file}"
-
-            echo "Printing failure log..."
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy results --mode detailed ${result_file} | jq '. | select(.status == \"failed\") | .details'"
+            scp ./show_result.sh -i jenkins.key taco@${endpoint}:/home/taco/
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "chmod +x show_result.sh && ./show_result.sh"
           """
 
           result = sh(returnStdout: true,
