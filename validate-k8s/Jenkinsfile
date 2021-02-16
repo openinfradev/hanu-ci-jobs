@@ -87,7 +87,7 @@ pipeline {
           println("*** Showing test result ***")
 
           sh """
-            scp ./show_result.sh -i jenkins.key taco@${endpoint}:/home/taco/
+            scp -o StrictHostKeyChecking=no -i jenkins.key validate-k8s/show_result.sh taco@${endpoint}:/home/taco/
             ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "chmod +x show_result.sh && ./show_result.sh"
           """
 
