@@ -1,0 +1,117 @@
+@Library('jenkins-pipeline-library@main') _
+
+def getUpstreamSonobuoyVersion() {
+  version = sh(returnStdout: true,
+    script: "git ls-remote --tags ${env.SONOBUOY_URL} | awk '{print \$2}' | grep \"v[0-9.]*\$\" | sed \"s/refs\\/tags\\/v//g\" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1").trim()
+  return version
+}
+
+pipeline {
+  agent {
+    node {
+      label 'openstack-slave-pangyo'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+    }
+  }
+  environment {
+    SONOBUOY_URL = "https://github.com/vmware-tanzu/sonobuoy.git"
+  }
+  parameters {
+    string(name: 'SONOBUOY_VERSION',
+      defaultValue: 'latest',
+      description: 'version of sonobuoy. eg) 0.19.0')
+    string(name: 'SONOBUOY_MODE',
+      defaultValue: 'custom',
+      description: 'custom | quick | non-disruptive-conformance | certified-conformance')
+    string(name: 'KUBERNETES_CLUSTER_IP',
+      defaultValue: '',
+      description: 'set exising cluster\'s endpoint. the cluster can be connected with jenkins.key in taco production env. If blank, new aio kubernetes will be deployed to diagnose.')
+    booleanParam(name: 'CLEANUP',
+      defaultValue: true,
+      description: 'Clean up workspace after job execution')
+  }
+  options {
+    timeout(time: 120, unit: 'MINUTES')
+    timestamps()
+  }
+
+  stages {
+    stage('Init') {
+      steps {
+        script {
+          version = (params.SONOBUOY_VERSION == "latest") ? getUpstreamSonobuoyVersion() : params.SONOBUOY_VERSION
+          endpoint = params.KUBERNETES_CLUSTER_IP
+
+          if(!endpoint) {
+            error("Kubernetes Cluster IP was not specified! The value is mandatory!")
+          }
+
+          println("============================")
+          println("sonobuoy version: ${version}")
+          println("cluster endpoint: ${endpoint}")
+          println("============================")
+        }
+      }
+    }
+
+    stage('Run Sonobuoy') {
+      steps {
+        script {
+          sh """
+            #rm -rf /var/lib/jenkins/.ssh/known_hosts
+            cp /opt/jenkins/.ssh/jenkins-slave-hanukey ./jenkins.key
+
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "curl -L \"https://github.com/vmware-tanzu/sonobuoy/releases/download/v${version}/sonobuoy_${version}_linux_amd64.tar.gz\" --output ./sonobuoy.tar.gz && tar -xzf ./sonobuoy.tar.gz && chmod +x ./sonobuoy && sudo cp sonobuoy /usr/bin/ && rm -rf ./sonobuoy*"
+          """
+
+          // Check if sonobuoy instance already exists //
+          sonobuoy_status = sh(returnStatus: true,
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'")
+
+          if (!sonobuoy_status) {
+            sh "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy delete --wait'"
+          }
+
+          println("*** Starting sonobuoy test ***")
+
+          if(params.SONOBUOY_MODE != 'custom' ) {
+            // Pre-defined mode test //
+            sh "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} \"sonobuoy run --mode ${params.SONOBUOY_MODE} --e2e-parallel 30 --wait\""
+          } else {
+            // Custom Test //
+            sh """
+              ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy run --e2e-focus='EmptyDir volumes|deployment support rollover|Pods should support retrieving logs|Probing container should be restarted with|Probing container with readiness probe that fails|should update pod when spec was updated|should be consumable|Service endpoints latency|Scaling should happen in predictable order|should perform canary updates|should ensure that all pods are removed|DNS should provide DNS' --e2e-parallel 30 --wait"
+            """
+          }
+
+          println("*** Showing test result ***")
+
+          sh """
+            scp -o StrictHostKeyChecking=no -i jenkins.key validate-k8s/show_result.sh taco@${endpoint}:/home/taco/
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "chmod +x show_result.sh && ./show_result.sh"
+          """
+
+          result = sh(returnStdout: true,
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'").trim()
+          if(result.contains("failed")) {
+            throw new Exception("sonobuoy e2e test failed.")
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        if ( params.CLEANUP == true ) {
+          sh """
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "sonobuoy delete --all --wait && rm -rf ./sonobuoy_result"
+          """
+        } else {
+          echo "Skipping sonobuoy cleanup.."
+        }
+      }
+    }
+  }
+}
