@@ -24,7 +24,7 @@ def branch(String repo, String src, String dst, String srcTag, String dstTag) {
         userRemoteConfigs: [
           [
             name: 'origin',
-            url: "${repoBaseUrl}/${repo}.git"
+            url: "${repoBaseUrl}:${repo}.git"
           ]
         ]
       ]
@@ -75,7 +75,7 @@ def tag(String repo, String branch, String version) {
           [
             credentialsId: 'hanu-github-token-new',
             name: 'origin',
-            url: "${repoBaseUrl}/${repo}.git"
+            url: "${repoBaseUrl}:${repo}.git"
           ]
         ]
       ]
