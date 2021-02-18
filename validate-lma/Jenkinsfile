@@ -1,0 +1,67 @@
+@Library('jenkins-pipeline-library@main') _
+
+def getEfkE2eTestsVersion() {
+  version = sh(returnStdout: true,
+    script: "git ls-remote --tags ${env.SONOBUOY_URL} | awk '{print \$2}' | grep \"v[0-9.]*\$\" | sed \"s/refs\\/tags\\/v//g\" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1").trim()
+  return version
+}
+
+pipeline {
+  agent {
+    node {
+      label 'openstack-slave-pangyo'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+    }
+  }
+  environment {
+    EFK_E2E_TESTS = "https://github.com/jabbukka/efk-e2e-tests.git"
+  }
+  parameters {
+    string(name: 'KUBERNETES_CLUSTER_IP',
+      defaultValue: '',
+      description: 'set exising cluster\'s endpoint. the cluster can be connected with jenkins.key in taco production env. If blank, new aio kubernetes will be deployed to diagnose.')
+  }
+  options {
+    timeout(time: 10, unit: 'MINUTES')
+    timestamps()
+  }
+
+  stages {
+    stage('Prepare') {
+      steps {
+        script {
+          efk_e2e_version = getEfkE2eTestsVersion()
+          endpoint = params.KUBERNETES_CLUSTER_IP
+
+          if(!endpoint) {
+            error("Kubernetes Cluster IP was not specified! The value is mandatory!")
+          }
+
+          println("============================")
+          println("cluster endpoint: ${endpoint}")
+          println("============================")
+        }
+      }
+    }
+
+    stage('Test EFK') {
+      steps {
+        script {
+          sh """
+            #rm -rf /var/lib/jenkins/.ssh/known_hosts
+            cp /opt/jenkins/.ssh/jenkins-slave-hanukey ./jenkins.key
+
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "curl -L \"https://github.com/jabbukka/efk-e2e-tests/releases/download/${version}/efk-e2e-tests-${version}-linux_amd64.tar.gz\" --output ./efk-e2e-tests.tar.gz && tar -xzf ./efk-e2e-tests.tar.gz && chmod +x ./efk-e2e-tests && sudo cp efk-e2e-tests /usr/bin/ && rm -rf ./efk-e2e-tests*"
+          """
+
+          println("*** Starting efk e2e test ***")
+
+          // Custom Test //
+          sh """
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "efk-e2e-tests -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:30002"
+          """
+        }
+      }
+    }
+  }
+}
