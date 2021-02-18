@@ -48,15 +48,12 @@ pipeline {
       steps {
         script {
           sh """
-            #rm -rf /var/lib/jenkins/.ssh/known_hosts
-            cp /opt/jenkins/.ssh/jenkins-slave-hanukey ./jenkins.key
-
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "curl -L \"https://github.com/jabbukka/efk-e2e-tests/releases/download/${version}/efk-e2e-runner-${version}-linux-amd64.tar.gz\" --output ./efk-e2e-runner.tar.gz && tar -xzf ./efk-e2e-runner.tar.gz && chmod +x ./efk-e2e-runner && sudo cp efk-e2e-runner /usr/bin/ && rm -rf ./efk-e2e-runner*"
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "curl -L \"https://github.com/jabbukka/efk-e2e-tests/releases/download/${version}/efk-e2e-runner-${version}-linux-amd64.tar.gz\" --output ./efk-e2e-runner.tar.gz && tar -xzf ./efk-e2e-runner.tar.gz && chmod +x ./efk-e2e-runner && sudo cp efk-e2e-runner /usr/bin/ && rm -rf ./efk-e2e-runner*"
           """
 
           println("*** Starting efk e2e test ***")
           sh """
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "efk-e2e-runner -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:30002\""
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "efk-e2e-runner -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:30002\""
           """
         }
       }
