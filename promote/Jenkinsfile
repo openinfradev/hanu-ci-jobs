@@ -143,7 +143,7 @@ pipeline {
           ]
 
           sh """
-            git config --global user.email "newfruk2@naver.com"
+            git config --global user.email "hanu-jenkins@sk.com"
             git config --global user.name "hanu-jenkins"
           """
         }
