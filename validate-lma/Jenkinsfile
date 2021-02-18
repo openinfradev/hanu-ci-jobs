@@ -2,7 +2,7 @@
 
 def getEfkE2eTestsVersion() {
   version = sh(returnStdout: true,
-    script: "git ls-remote --tags ${env.SONOBUOY_URL} | awk '{print \$2}' | grep \"v[0-9.]*\$\" | sed \"s/refs\\/tags\\/v//g\" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1").trim()
+    script: "git ls-remote --tags ${env.EFK_E2E_TESTS} | awk '{print \$2}' | grep \"v[0-9.]*\$\" | sed \"s/refs\\/tags\\/v//g\" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1").trim()
   return version
 }
 
