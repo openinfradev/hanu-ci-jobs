@@ -2,7 +2,7 @@
 
 def getEfkE2eTestsVersion() {
   version = sh(returnStdout: true,
-    script: "git ls-remote --tags ${env.EFK_E2E_TESTS} | awk '{print \$2}' | grep \"v[0-9.]*\$\" | sed \"s/refs\\/tags\\/v//g\" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1").trim()
+    script: "git ls-remote --tags ${env.EFK_E2E_TESTS} | awk '{print \$2}' | grep \"[0-9.]*\$\" | sed \"s/refs\\/tags\\///g\" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1").trim()
   return version
 }
 
@@ -51,14 +51,12 @@ pipeline {
             #rm -rf /var/lib/jenkins/.ssh/known_hosts
             cp /opt/jenkins/.ssh/jenkins-slave-hanukey ./jenkins.key
 
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "curl -L \"https://github.com/jabbukka/efk-e2e-tests/releases/download/${version}/efk-e2e-tests-${version}-linux_amd64.tar.gz\" --output ./efk-e2e-tests.tar.gz && tar -xzf ./efk-e2e-tests.tar.gz && chmod +x ./efk-e2e-tests && sudo cp efk-e2e-tests /usr/bin/ && rm -rf ./efk-e2e-tests*"
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "curl -L \"https://github.com/jabbukka/efk-e2e-tests/releases/download/${version}/efk-e2e-runner-${version}-linux-amd64.tar.gz\" --output ./efk-e2e-runner.tar.gz && tar -xzf ./efk-e2e-runner.tar.gz && chmod +x ./efk-e2e-runner && sudo cp efk-e2e-runner /usr/bin/ && rm -rf ./efk-e2e-runner*"
           """
 
           println("*** Starting efk e2e test ***")
-
-          // Custom Test //
           sh """
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "efk-e2e-tests -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:30002"
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "efk-e2e-runner -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:30002\""
           """
         }
       }
