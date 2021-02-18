@@ -24,7 +24,7 @@ def branch(String repo, String src, String dst, String srcTag, String dstTag) {
         userRemoteConfigs: [
           [
             name: 'origin',
-            url: "${repoBaseUrl}/${repo}.git"
+            url: "${repoBaseUrl}:${repo}.git"
           ]
         ]
       ]
@@ -75,7 +75,7 @@ def tag(String repo, String branch, String version) {
           [
             credentialsId: 'hanu-github-token-new',
             name: 'origin',
-            url: "${repoBaseUrl}/${repo}.git"
+            url: "${repoBaseUrl}:${repo}.git"
           ]
         ]
       ]
@@ -97,7 +97,7 @@ def tag(String repo, String branch, String version) {
 pipeline {
   agent {
     node {
-      label 'openstack-prd'
+      label 'openstack-slave-pangyo'
       customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
     }
   }
@@ -121,54 +121,65 @@ pipeline {
   }
 
   stages {
-
     stage ('Init') {
       steps {
-          script {
-            baseOS = 'ubuntu'
-            repoBaseUrl = 'git@github.com:openinfradev'
-
-            repos = [
-              //'tacoplay', 'taco-helm', 'hanu-site-yaml'
-              'tacoplay'
+        script {
+          repoBaseUrl = 'git@github.com'
+          repos = [
+            'openinfradev': [
+              'tacoplay',
+              'taco-helm',
+              'decapod-flow',
+              'decapod-base-yaml',
+              'decapod-site-yaml',
+              'kustomize-helm-transformer',
+              'operator-helm',
+              'taco-gate-inventories',
+              'pipeline-library'
+            ],
+            'sktelecom': [
+              'skt-site-yaml'
             ]
-            
-            sh """
-              git config --global user.email "newfruk2@naver.com"
-              git config --global user.name "hanu-jenkins"
-            """
-          }
+          ]
+
+          sh """
+            git config --global user.email "hanu-jenkins@sk.com"
+            git config --global user.name "hanu-jenkins"
+          """
+        }
       }
     }
 
     stage ('Validation') {
       steps {
-          script {
-            if (params.DST_TAG.empty) {
-              error('dst tag mandatory, aborting')
-            }
-            srcBranch = params.SRC_BRANCH
-            dstBranch = params.DST_BRANCH
-            srcTag = params.SRC_TAG
-            dstTag = params.DST_TAG
-
-            if (!params.SRC_BRANCH || params.SRC_BRANCH.empty) {
-              println('SRC_BRANCH was not specified. Using main branch..')
-              srcBranch = 'main'
-            }
-            println("DstTag:\t${dstTag}")
+        script {
+          if (params.DST_TAG.empty) {
+            error('dst tag mandatory, aborting')
           }
+          srcBranch = params.SRC_BRANCH
+          dstBranch = params.DST_BRANCH
+          srcTag = params.SRC_TAG
+          dstTag = params.DST_TAG
+
+          if (!params.SRC_BRANCH || params.SRC_BRANCH.empty) {
+            println('SRC_BRANCH was not specified. Using main branch..')
+            srcBranch = 'main'
+          }
+          println("DstTag:\t${dstTag}")
+        }
       }
     }
 
     stage ('Branch Git') {
       steps {
-          script {
+        script {
+          repos.each { org, repos ->
             repos.each { repo ->
-              branch("${repo}", srcBranch, dstBranch, srcTag, dstTag)
-              tag("${repo}", dstBranch, dstTag)
+              branch("${org}/${repo}", srcBranch, dstBranch, srcTag, dstTag)
+              tag("${org}/${repo}", dstBranch, dstTag)
             }
           }
+        }
       }
     }
 
