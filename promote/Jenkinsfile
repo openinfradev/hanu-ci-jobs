@@ -132,7 +132,7 @@ pipeline {
               'decapod-flow',
               'decapod-base-yaml',
               'decapod-site-yaml',
-              'customize-helm-transformer',
+              'kustomize-helm-transformer',
               'operator-helm',
               'taco-gate-inventories',
               'pipeline-library'
