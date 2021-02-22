@@ -50,10 +50,12 @@ pipeline {
           sh """
             ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "curl -L \"https://github.com/jabbukka/efk-e2e-tests/releases/download/${version}/efk-e2e-runner-${version}-linux-amd64.tar.gz\" --output ./efk-e2e-runner.tar.gz && tar -xzf ./efk-e2e-runner.tar.gz && chmod +x ./efk-e2e-runner && sudo cp efk-e2e-runner /usr/bin/ && rm -rf ./efk-e2e-runner*"
           """
+          esPort = sh(returnStdout: true,
+               script: "ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} \"kubectl get svc eck-elasticsearch-es-http -nlma -ojsonpath={'.spec.ports[0].nodePort'}\"").trim()
 
           println("*** Starting efk e2e test ***")
           sh """
-            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "efk-e2e-runner -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:30002\""
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "efk-e2e-runner -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:${esPort}\""
           """
         }
       }
