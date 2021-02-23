@@ -1,0 +1,70 @@
+@Library('jenkins-pipeline-library@main') _
+
+pipeline {
+  agent {
+    node {
+      label 'openstack-slave-pangyo-ubuntu'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+    }
+  }
+  environment {
+    IMAGEBUILDER_URL = "https://github.com/kubernetes-sigs/image-builder.git"
+  }
+  parameters {
+    string(name: 'UBUNTU_VERSION',
+      defaultValue: '2004',
+      description: 'Ubuntu version')
+    string(name: 'K8S_VERSION_MAJOR_MINOR',
+      defaultValue: '1.20',
+      description: 'Kubernetes version MAJOR.MINOR.z')
+    string(name: 'K8S_VERSION_PATCH',
+      defaultValue: '2',
+      description: 'Kubernetes version x.y.PATCH')
+  }
+  options {
+    timeout(time: 120, unit: 'MINUTES')
+    timestamps()
+  }
+
+  stages {
+    stage ('Init') {
+      steps {
+        script {
+	  ubuntu_version = params.UBUNTU_VERSION
+	  k8s_series = params.K8S_VERSION_MAJOR_MINOR
+	  k8s_version = params.K8S_VERSION_MAJOR_MINOR + "." + params.K8S_VERSION_PATCH
+
+          println("============================")
+          println("Ubuntu version: ${ubuntu_version}")
+          println("Kubernetes version: ${k8s_series}, ${k8s_version}")
+          println("============================")
+
+	  sh """
+            git clone ${env.IMAGEBUILDER_URL}
+
+            # Use cloud-init's growroot
+            sed -i '/cloud-initramfs-growroot/d' image-builder/images/capi/ansible/roles/providers/tasks/qemu.yml
+
+            build-capi-images/preserving_resolv_conf.sh
+            build-capi-images/create_packer_tmpl.sh ${k8s_version}
+            build-capi-images/prepare_local_iso.sh image-builder/images/capi/packer/qemu/qemu-ubuntu-${ubuntu_version}.json
+
+	    cd image-builder/images/capi/
+            PACKER_VAR_FILES=../../../packer_taco.json make build-qemu-ubuntu-${ubuntu_version}
+
+            /snap/bin/openstack --os-cloud=pangyo-prd image create --disk-format raw --container-format bare --public --file output/ubuntu-${ubuntu_version}-kube-v${k8s_version}/ubuntu-${ubuntu_version}-kube-v${k8s_version} ubuntu-${ubuntu_version}-kube-v${k8s_version}-\$(date +%F)
+	  """
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      notifyCompleted(true)
+    }
+    failure {
+      notifyCompleted(false)
+    }
+  }
+}
