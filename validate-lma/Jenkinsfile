@@ -63,8 +63,7 @@ pipeline {
       steps {
         script {
           sh """
-            scp -o StrictHostKeyChecking=no -i jenkins.key validate-lma/check_prometheus.py taco@${endpoint}:/home/taco/
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "python3 ~/check_prometheus.py"          
+            validate-lma/check_prometheus.py --prometheus ${endpoint}:30008 --timeout 600
           """
         }
       }
