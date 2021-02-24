@@ -60,5 +60,15 @@ pipeline {
         }
       }
     }
+
+    stage('Test Prometheus') {
+      steps {
+        script {
+          sh """
+            validate-lma/check_prometheus.py --prometheus ${endpoint}:30008 --timeout 600
+          """
+        }
+      }
+    }
   }
 }
