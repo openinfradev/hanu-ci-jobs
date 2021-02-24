@@ -7,9 +7,9 @@ CHECK_INTERVAL=30
 targets = ["kubernetes",
     "kube-state-metrics",
     "lma-coredns",
-    "lma-kube-controller-manager",
+    # "lma-kube-controller-manager",
     "lma-kube-proxy",
-    "lma-kube-scheduler",
+    # "lma-kube-scheduler",
     "lma-prometheus",
     "process-exporter",
     "prometheus-node-exporter",
@@ -68,7 +68,7 @@ def main(argv):
       timeout = int(arg)
 
   print(url)
-  while targets:
+  while True:
     checked=[]
     for target in targets:
       if check_up(url, target):
@@ -79,11 +79,13 @@ def main(argv):
     for target in checked:
       targets.remove(target)
 
+    if not targets:
+        sys.exit(0)
     print(targets, "are not checked. Sleeping for",CHECK_INTERVAL,". Timeout(", timeout, ") is left before terminate with fail.")
     time.sleep(CHECK_INTERVAL)
     timeout = timeout-CHECK_INTERVAL
     if timeout<0:
-      sys.exit(targets, "are not checked. (finished with fail)")
+        sys.exit("{} are not checked. (finished with fail)".format(target))
 
 if __name__ == "__main__":
   main(sys.argv[1:])
