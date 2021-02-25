@@ -49,10 +49,22 @@ pipeline {
               git clone https://github.com/openinfradev/tacoplay.git
               cp -r inventories/${params.TARGET_SITE} tacoplay/inventory/
               mkdir ~/agent/docker_images || true
-            """
+              #FIXME: delete branch option after test
+              git clone -b test-download-helm-chart https://github.com/openinfradev/decapod-site-yaml.git
 
+            """
             dir('tacoplay') {
               sh "git checkout ${params.TACOPLAY_VERSION}"
+            }
+            dir('decapod-site-yaml') {
+              def app_list = params.INCLUDED_APPS.split(',')
+              app_list.each{
+                sh ".github/workflows/render.sh ${it}"
+                sh "cp ${it}/output/${params.TARGET_SITE}/${it}-manifest.yaml ${env.WORKSPACE}/tacoplay/inventory/preparation/"
+              }
+            }
+            dir('tacoplay') {
+              //sh "git checkout ${params.TACOPLAY_VERSION}"
 
               // Should pass this format: '{"taco_apps": ['openstack','lma']}'
               tacoplay_params = "-e '{\"taco_apps\": ["
@@ -63,14 +75,10 @@ pipeline {
 
                 app_list.eachWithIndex { app, index ->
                   if ( app == 'openstack') {
-                    if (params.TARGET_SITE.startsWith('gate')) {
-                      sh "cp ./inventory/${params.TARGET_SITE}/${app}-manifest.yaml ./inventory/preparation/"
-                    } else {
+                    if (! params.TARGET_SITE.startsWith('gate')) {
                       add_openstack_param = true
                     }
-                  } else {
-                    sh "cp ./inventory/${params.TARGET_SITE}/${app}-manifest.yaml ./inventory/preparation/"
-                  }
+                  } 
 
                   if ( index == app_list.length-1 ) {
                     tacoplay_params += "'${app}'"
