@@ -92,7 +92,7 @@ pipeline {
                 pip install --upgrade pip
                 pip install -r requirements.txt
 
-                ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall,untagged --skip-tags upgrade -e @inventory/preparation/extra-vars.yml ${tacoplay_params}
+                ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall,untagged --skip-tags upgrade -e @inventory/preparation/extra-vars.yml -e site_name=${params.TARGET_SITE} ${tacoplay_params}
               """
             }
           }
