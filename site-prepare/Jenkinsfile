@@ -82,6 +82,13 @@ pipeline {
               }
 
               println("tacoplay_params: ${tacoplay_params}")
+              repo = sh (
+                script: "cat /etc/hosts|grep tacorepo",
+                returnStatus: true
+              ) 
+              if ( repo == 1 ) {
+                sh (script: "echo 127.0.0.1 tacorepo|tee -a /etc/hosts")
+              }
 
               sh """
                 env | grep PATH
