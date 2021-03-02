@@ -1,0 +1,169 @@
+@Library('jenkins-pipeline-library@main') _
+
+pipeline {
+  agent {
+    node {
+      label 'openstack-slave-pangyo'
+      customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
+    }
+  }
+  parameters {
+    string(name: 'PROVIDER',
+      defaultValue: 'openstack-pangyo',
+      description: 'The name of provider defined in clouds.yaml file.')
+    string(name: 'SITE',
+      defaultValue: 'gate-centos-lb-ceph-online-multinodes',
+      description: 'target site(inventory) to deploy taco')
+    string(name: 'K8S_VERSION_BEFORE',
+      defaultValue: 'v1.17.6',
+      description: 'Initial kubernetes version')
+    string(name: 'K8S_VERSION_AFTER',
+      defaultValue: 'v1.18.8',
+      description: 'Kubernetes version to which you want to upgrade')
+    string(name: 'K8S_VM_NAME',
+      defaultValue: '',
+      description: 'Name of the VM on which k8s is deployed. Used to skip the first stage.')
+    booleanParam(name: 'CLEANUP',
+      defaultValue: true,
+      description: 'delete VM once job is finished?')
+  }
+  environment {
+    KUBECONFIG = "/root/.kube/config"
+    ANSIBLE_SCP_IF_SSH = "y"
+  }
+  options {
+    timeout(time: 240, unit: 'MINUTES')
+    timestamps()
+  }
+
+  stages {
+    stage ('Deploy K8S') {
+      when {
+        expression { !params.K8S_VM_NAME }
+      }
+      steps {
+          script {
+            def job = build(
+              job: "deploy-taco",
+              parameters: [
+                string(name: 'K8S_VERSION', value: "${params.K8S_VERSION_BEFORE}"),
+                string(name: 'SITE', value: params.SITE),
+                booleanParam(name: 'JOIN_K8S_POOL', value: true),
+                booleanParam(name: 'CLEANUP', value: false)
+              ],
+              propagate: true
+            )
+            res = job.getResult()
+            println("Deploy-taco job result: ${res}")
+
+          }
+      }
+    }
+
+    stage ('Deploy LMA apps') {
+      steps {
+          script {
+            k8s_vm_name = ''
+            // Get k8s endpoint from file in workspace
+            if (params.K8S_VM_NAME) {
+              k8s_vm_name = params.K8S_VM_NAME
+            } else {
+              k8s_vm_name = sh(returnStdout: true, script: 'cat /tmp/k8s_vm_\$(date +%y%m%d)').trim()
+            }
+
+            println("Running deploy-apps job on VM ${k8s_vm_name}")
+ 
+            def job = build(
+              job: "deploy-apps",
+              parameters: [
+                string(name: 'APPS', value: "lma"),
+                string(name: 'K8S_VM_NAME', value: k8s_vm_name)
+              ],
+              propagate: true
+            )
+            res = job.getResult()
+            println("Deploy-apps job result: ${res}")
+          }
+      }
+    }
+
+    stage ('Upgrade k8s') {
+      steps {
+          script {
+            tacoplay_params = "-e kube_version=${params.K8S_VERSION_AFTER}"
+            println("tacoplay_params: ${tacoplay_params}")
+
+            sh """
+              git clone https://github.com/openinfradev/taco-gate-inventories.git
+              cp taco-gate-inventories/config/pangyo-clouds.yml ./clouds.yaml
+            """
+
+            vmIPs = getOpenstackVMinfo(k8s_vm_name, 'private-mgmt-online', params.PROVIDER)
+            if (vmIPs) {
+              vmIPs.eachWithIndex { name, ip, index ->
+                if (index==0) {
+                  admin_node_ip = ip
+                  print("Found admin node IP: ${admin_node_ip}")
+                }
+              }
+            }
+
+            sh """
+              ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${admin_node_ip} "cd tacoplay && git status && ansible-playbook -T 30 -vv -u taco -b -i inventory/${params.SITE}/hosts.ini upgrade-cluster.yml -e @inventory/${params.SITE}/extra-vars.yml ${tacoplay_params}"
+            """
+          }
+      }
+    }
+
+    stage ('Validate upgraded k8s cluster') {
+      steps {
+        script {
+            def job = build(
+              job: "validate-k8s",
+              parameters: [
+                string(name: 'KUBERNETES_CLUSTER_IP', value: "${admin_node_ip}")
+              ],
+              propagate: true
+            )
+            res = job.getResult()
+            println("Validate-k8s result: ${res}")
+        }
+      }
+    }
+
+    stage ('Validate LMA apps') {
+      steps {
+        script {
+            def job = build(
+              job: "validate-lma",
+              parameters: [
+                string(name: 'KUBERNETES_CLUSTER_IP', value: "${admin_node_ip}")
+              ],
+              propagate: true
+            )
+            res = job.getResult()
+            println("Validate-lma Result: ${res}")
+        }
+      }
+    }
+
+  }
+
+  post {
+    always {
+        script {
+          if ( params.CLEANUP == true ) {
+            deleteOpenstackVMs(k8s_vm_name, "", params.PROVIDER)
+          } else {
+            echo "Skipping VM cleanup.."
+          }
+        }
+    }
+    success {
+      notifyCompleted(true)
+    }
+    failure {
+      notifyCompleted(false)
+    }
+  }
+}
