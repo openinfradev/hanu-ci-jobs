@@ -15,7 +15,7 @@ pipeline {
       defaultValue: 'gate-centos-lb-ceph-online-multinodes',
       description: 'target site (inventory) name for manifest preparation')
     string(name: 'INCLUDED_APPS',
-      defaultValue: 'openstack,lma',
+      defaultValue: 'openstack,lma,service-mesh',
       description: 'Apps to include in tarball? (comma-separated list)')
     string(name: 'OPENSTACK_RELEASE',
       defaultValue: 'stein',
