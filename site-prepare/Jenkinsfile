@@ -15,7 +15,7 @@ pipeline {
       defaultValue: 'gate-centos-lb-ceph-online-multinodes',
       description: 'target site (inventory) name for manifest preparation')
     string(name: 'INCLUDED_APPS',
-      defaultValue: 'openstack,lma',
+      defaultValue: 'openstack,lma,service-mesh',
       description: 'Apps to include in tarball? (comma-separated list)')
     string(name: 'OPENSTACK_RELEASE',
       defaultValue: 'stein',
@@ -26,7 +26,7 @@ pipeline {
     ANSIBLE_INVALID_TASK_ATTRIBUTE_FAILED = "False"
   }
   options {
-    timeout(time: 120, unit: 'MINUTES')
+    timeout(time: 240, unit: 'MINUTES')
     timestamps()
   }
 
@@ -50,8 +50,8 @@ pipeline {
               cp -r inventories/${params.TARGET_SITE} tacoplay/inventory/
               cp -r inventories/preparation tacoplay/inventory
               mkdir ~/agent/docker_images || true
-            """
 
+            """
             dir('tacoplay') {
               sh "git checkout ${params.TACOPLAY_VERSION}"
 
@@ -64,14 +64,10 @@ pipeline {
 
                 app_list.eachWithIndex { app, index ->
                   if ( app == 'openstack') {
-                    if (params.TARGET_SITE.startsWith('gate')) {
-                      sh "cp ./inventory/${params.TARGET_SITE}/${app}-manifest.yaml ./inventory/preparation/"
-                    } else {
+                    if (! params.TARGET_SITE.startsWith('gate')) {
                       add_openstack_param = true
                     }
-                  } else {
-                    sh "cp ./inventory/${params.TARGET_SITE}/${app}-manifest.yaml ./inventory/preparation/"
-                  }
+                  } 
 
                   if ( index == app_list.length-1 ) {
                     tacoplay_params += "'${app}'"
@@ -87,6 +83,13 @@ pipeline {
               }
 
               println("tacoplay_params: ${tacoplay_params}")
+              repo = sh (
+                script: "cat /etc/hosts|grep tacorepo",
+                returnStatus: true
+              ) 
+              if ( repo == 1 ) {
+                sh (script: "echo 127.0.0.1 tacorepo|tee -a /etc/hosts")
+              }
 
               sh """
                 env | grep PATH
@@ -97,7 +100,7 @@ pipeline {
                 pip install --upgrade pip
                 pip install -r requirements.txt
 
-                ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall,untagged --skip-tags upgrade -e @inventory/preparation/extra-vars.yml ${tacoplay_params}
+                ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall,untagged --skip-tags upgrade -e @inventory/preparation/extra-vars.yml -e site_name=${params.TARGET_SITE} ${tacoplay_params}
               """
             }
           }
