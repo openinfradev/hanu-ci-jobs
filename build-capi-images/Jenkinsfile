@@ -46,6 +46,7 @@ pipeline {
             sed -i '/cloud-initramfs-growroot/d' image-builder/images/capi/ansible/roles/providers/tasks/qemu.yml
 
             build-capi-images/preserving_resolv_conf.sh
+            build-capi-images/manage_etc_hosts.sh
             build-capi-images/create_packer_tmpl.sh ${k8s_version}
             build-capi-images/prepare_local_iso.sh image-builder/images/capi/packer/qemu/qemu-ubuntu-${ubuntu_version}.json
 
