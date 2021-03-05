@@ -13,8 +13,8 @@ targets = ["kubernetes",
     "lma-prometheus",
     "process-exporter",
     "prometheus-node-exporter",
-    "prometheus-operator-kube-p-kubelet",
-    "prometheus-operator-kube-p-operator",
+    "prometheus-operator-kubelet",
+    "prometheus-operator-operator",
     "prometheus-pushgateway"]
 
 
@@ -41,7 +41,7 @@ def check_up(url, svc):
     count = int('{value[1]}'.format(**results[0]))
     if(count==0):
         return False
-    
+
     return True
   except IndexError:
     return False
@@ -56,14 +56,14 @@ def main(argv):
   except getopt.GetoptError:
     printhelp()
     sys.exit(-1)
-  
+
   url = "http://127.0.0.1:30008/api/v1/query"
   for opt, arg in opts:
     if opt == '-h':
       printhelp()
       sys.exit(0)
     elif opt in ("-p", "--prometheus"):
-      url = "http://{}/api/v1/query".format(arg)     
+      url = "http://{}/api/v1/query".format(arg)
     elif opt in ("-t", "--timeout"):
       timeout = int(arg)
 
