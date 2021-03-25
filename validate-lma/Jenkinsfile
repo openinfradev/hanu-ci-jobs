@@ -19,7 +19,7 @@ pipeline {
   parameters {
     string(name: 'KUBERNETES_CLUSTER_IP',
       defaultValue: '',
-      description: 'set exising cluster\'s endpoint. the cluster can be connected with jenkins.key in taco production env. If blank, new aio kubernetes will be deployed to diagnose.')
+      description: 'Exising k8s cluster\'s endpoint. The cluster can be connected with jenkins.key in taco production env.')
   }
   options {
     timeout(time: 10, unit: 'MINUTES')
