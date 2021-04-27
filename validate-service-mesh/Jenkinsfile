@@ -55,7 +55,7 @@ pipeline {
           """
 
           ingressNodePort = sh(returnStdout: true,
-            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} get-nodeport.sh").trim()
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} ./get-nodeport.sh").trim()
 
           if(!ingressNodePort) {
             throw new Exception("Failed to retrieve ingressGateway's nodePort.")

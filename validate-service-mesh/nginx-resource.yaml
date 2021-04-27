@@ -61,7 +61,7 @@ spec:
   hosts:
   - "nginx.hanu.com"
   gateways:
-  - gateway
+  - gateway-default
   http:
   - route:
     - destination:
