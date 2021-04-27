@@ -48,8 +48,14 @@ pipeline {
           """
 
           println("*** Retrieving ingressGateway NodePort ***")
+
+          sh """
+            scp -o StrictHostKeyChecking=no -i jenkins.key validate-service-mesh/get-nodeport.sh taco@${endpoint}:/home/taco/
+            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "chmod +x get-nodeport.sh"
+          """
+
           ingressNodePort = sh(returnStdout: true,
-            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'kubectl get svc -n istio-gateway -o=jsonpath=\'{.items[0].spec.ports[?(@.port==80)].nodePort}\'").trim()
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} get-nodeport.sh").trim()
 
           if(!ingressNodePort) {
             throw new Exception("Failed to retrieve ingressGateway's nodePort.")
