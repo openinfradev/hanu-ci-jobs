@@ -66,7 +66,7 @@ pipeline {
           if (!connStatus) {
             println("Successfully connected to nginx service!")
           } else {
-            error("Failed to connect to nginx service. )
+            error("Failed to connect to nginx service.")
           }
         }
       }
