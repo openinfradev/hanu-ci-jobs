@@ -37,15 +37,24 @@ pipeline {
     stage('Test connection using ingress URL') {
       steps {
         script {
-          sh """
-            cp /opt/jenkins/.ssh/jenkins-slave-hanukey ./jenkins.key
+          sh "cp /opt/jenkins/.ssh/jenkins-slave-hanukey ./jenkins.key"
 
-            # Send nginx-resource.yml #
-            scp -o StrictHostKeyChecking=no -i jenkins.key -r validate-service-mesh/nginx-resource.yaml taco@${endpoint}:/home/taco/
+          // Check if nginx instance has already been deployed //
+          nginx_status = sh(returnStatus: true,
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'kubectl get virtualservice -n nginx | grep nginx-vs'")
 
-            # Apply the manifest #
-            ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "kubectl create ns nginx && kubectl apply -f /home/taco/nginx-resource.yaml"
-          """
+          if (!nginx_status) {
+            println("Nginx instance alreay exists. Skipping deployment..")
+          } else {
+            println("Deploying nginx instance..")
+            sh """
+              # Send nginx-resource.yml #
+              scp -o StrictHostKeyChecking=no -i jenkins.key -r validate-service-mesh/nginx-resource.yaml taco@${endpoint}:/home/taco/
+
+              # Apply the manifest #
+              ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} "kubectl create ns nginx && kubectl apply -f /home/taco/nginx-resource.yaml"
+            """
+          }
 
           println("*** Retrieving ingressGateway NodePort ***")
 
