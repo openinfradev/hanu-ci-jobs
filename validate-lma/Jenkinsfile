@@ -1,11 +1,5 @@
 @Library('jenkins-pipeline-library@main') _
 
-def getEfkE2eTestsVersion() {
-  version = sh(returnStdout: true,
-    script: "git ls-remote --tags ${env.EFK_E2E_TESTS} | awk '{print \$2}' | grep \"[0-9.]*\$\" | sed \"s/refs\\/tags\\///g\" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1").trim()
-  return version
-}
-
 pipeline {
   agent {
     node {
@@ -13,16 +7,8 @@ pipeline {
       customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
     }
   }
-  environment {
-    EFK_E2E_TESTS = "https://github.com/jabbukka/efk-e2e-tests.git"
-  }
-  parameters {
-    string(name: 'KUBERNETES_CLUSTER_IP',
-      defaultValue: '',
-      description: 'Exising k8s cluster\'s endpoint. The cluster can be connected with jenkins.key in taco production env.')
-  }
   options {
-    timeout(time: 10, unit: 'MINUTES')
+    timeout(time: 20, unit: 'MINUTES')
     timestamps()
   }
 
@@ -30,7 +16,6 @@ pipeline {
     stage('Prepare') {
       steps {
         script {
-          efk_e2e_version = getEfkE2eTestsVersion()
           endpoint = params.KUBERNETES_CLUSTER_IP
 
           if(!endpoint) {
@@ -44,29 +29,38 @@ pipeline {
       }
     }
 
-    stage('Test EFK') {
+    stage('Test Alert') {
       steps {
         script {
+          patchJson = " \\\"{\\\\\\\"spec\\\\\\\": {\\\\\\\"values\\\\\\\": {\\\\\\\"alertmanager\\\\\\\": {\\\\\\\"config\\\\\\\": {\\\\\\\"global\\\\\\\": {\\\\\\\"slack_api_url\\\\\\\": \\\\\\\"${params.SLACK_API_URL}\\\\\\\"}}}}}}\\\" "
+          patchDaemonsetJson = " \\\"{\\\\\\\"spec\\\\\\\": {\\\\\\\"template\\\\\\\": {\\\\\\\"spec\\\\\\\": {\\\\\\\"nodeSelector\\\\\\\": {\\\\\\\"non-existing\\\\\\\": \\\\\\\"true\\\\\\\"}}}}}\\\" "
           sh """
-            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "curl -L \"https://github.com/jabbukka/efk-e2e-tests/releases/download/${version}/efk-e2e-runner-${version}-linux-amd64.tar.gz\" --output ./efk-e2e-runner.tar.gz && tar -xzf ./efk-e2e-runner.tar.gz && chmod +x ./efk-e2e-runner && sudo cp efk-e2e-runner /usr/bin/ && rm -rf ./efk-e2e-runner*"
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "echo 'login sucess'"
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "kubectl patch hr prometheus-fed-master --type=merge -p ${patchJson}"
+            scp -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey validate-lma/check_alert_config.yaml root@${endpoint}:/tmp/check_alert_config.yaml
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "kubectl apply -f /tmp/check_alert_config.yaml"
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "rm -f /tmp/check_alert_config.yaml"
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "kubectl patch daemonset prometheus-node-exporter -n lma -p ${patchDaemonsetJson}"
           """
-          esPort = sh(returnStdout: true,
-               script: "ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} \"kubectl get svc eck-elasticsearch-es-http -nlma -ojsonpath={'.spec.ports[0].nodePort'}\"").trim()
+          sleep 180
 
-          println("*** Starting efk e2e test ***")
-          sh """
-            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "efk-e2e-runner -kibana-host \"http://${endpoint}:30001\" -es-host \"https://${endpoint}:${esPort}\""
-          """
-        }
-      }
-    }
+          amPort = sh(returnStdout: true,
+               script: "ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} \"kubectl get svc fed-master-alertmanager -n fed -ojsonpath={'.spec.ports[0].nodePort'}\"").trim()
+          
+          amUrl = 'http://' + endpoint + ':' + amPort + '/api/v1/alerts'
 
-    stage('Test Prometheus') {
-      steps {
-        script {
-          sh """
-            validate-lma/check_prometheus.py --prometheus ${endpoint}:30008 --timeout 600
-          """
+          try {
+
+            sh """
+              validate-lma/check_alert.py ${amUrl} ${params.SLACK_BOT_TOKEN}
+            """
+          } finally {
+            sh """
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "kubectl get daemonsets prometheus-node-exporter -n lma -o yaml | grep -v non-existing > /tmp/prometheus-node-exporter.yaml"
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "kubectl apply -f /tmp/prometheus-node-exporter.yaml"
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey root@${endpoint} "rm -f /tmp/prometheus-node-exporter.yaml"
+            """
+          }
         }
       }
     }
