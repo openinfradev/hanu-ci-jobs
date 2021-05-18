@@ -47,6 +47,7 @@ pipeline {
               cp /root/.netrc ~/.netrc
               yum install -y git iproute net-tools
               git clone https://github.com/openinfradev/tacoplay.git
+              cp -r inventories/${params.TARGET_SITE} tacoplay/inventory/
               cp -r inventories/preparation tacoplay/inventory
               mkdir ~/agent/docker_images || true
 
