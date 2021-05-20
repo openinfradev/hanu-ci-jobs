@@ -70,5 +70,42 @@ pipeline {
         }
       }
     }
+
+    stage('Test Alert') {
+      steps {
+        script {
+          patchJson = " \\\"{\\\\\\\"spec\\\\\\\": {\\\\\\\"values\\\\\\\": {\\\\\\\"alertmanager\\\\\\\": {\\\\\\\"config\\\\\\\": {\\\\\\\"global\\\\\\\": {\\\\\\\"slack_api_url\\\\\\\": \\\\\\\"${params.SLACK_API_URL}\\\\\\\"}}}}}}\\\" "
+          patchDaemonsetJson = " \\\"{\\\\\\\"spec\\\\\\\": {\\\\\\\"template\\\\\\\": {\\\\\\\"spec\\\\\\\": {\\\\\\\"nodeSelector\\\\\\\": {\\\\\\\"non-existing\\\\\\\": \\\\\\\"true\\\\\\\"}}}}}\\\" "
+          sh """
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "echo 'login sucess'"
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "kubectl patch hr prometheus-fed-master --type=merge -p ${patchJson}"
+            scp -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey validate-lma/check_alert_config.yaml taco@${endpoint}:/tmp/check_alert_config.yaml
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "kubectl apply -f /tmp/check_alert_config.yaml"
+            ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "kubectl patch daemonset prometheus-node-exporter -n lma -p ${patchDaemonsetJson}"
+          """
+          sleep 180
+
+          amPort = sh(returnStdout: true,
+               script: "ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} \"kubectl get svc fed-master-alertmanager -n fed -ojsonpath={'.spec.ports[0].nodePort'}\"").trim()
+          
+          amUrl = 'http://' + endpoint + ':' + amPort + '/api/v1/alerts'
+
+          try {
+
+            sh """
+              validate-lma/check_alert.py ${amUrl} ${params.SLACK_BOT_TOKEN}
+            """
+          } finally {
+            sh """
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "kubectl delete -f /tmp/check_alert_config.yaml"
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "rm -f /tmp/check_alert_config.yaml"
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "kubectl get daemonsets prometheus-node-exporter -n lma -o yaml | grep -v non-existing > /tmp/prometheus-node-exporter.yaml"
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "kubectl apply -f /tmp/prometheus-node-exporter.yaml"
+              ssh -o StrictHostKeyChecking=no -i /opt/jenkins/.ssh/jenkins-slave-hanukey taco@${endpoint} "rm -f /tmp/prometheus-node-exporter.yaml"
+            """
+          }
+        }
+      }
+    }
   }
 }

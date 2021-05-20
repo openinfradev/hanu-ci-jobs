@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: test-alert-config
+  namespace: fed
+  labels:
+    alertmanagerConfig: example
+spec:
+  route:
+    receiver: 'main'
+  receivers:
+  - name: 'main'
+    slackConfigs:
+    - channel: '#temporary-alert'
+      sendResolved: true
+      title: '{{ range .Alerts }}[Fingerprint:{{ .Fingerprint }},StartsAt:{{ .StartsAt }}] {{ .Annotations.summary }}{{ end }}'
+      text: '{{ range .Alerts }}{{ .Annotations.message }}{{ end }}'
