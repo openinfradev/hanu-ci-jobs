@@ -3,7 +3,7 @@
 pipeline {
   agent {
     node {
-      label 'site-prepare'
+      label 'openstack-slave-pangyo-site-prepare'
       customWorkspace "workspace/${env.JOB_NAME}/${env.BUILD_NUMBER}"
     }
   }
@@ -11,8 +11,11 @@ pipeline {
     string(name: 'TACOPLAY_VERSION',
       defaultValue: 'main',
       description: 'branch or tag of tacoplay (Eg, \'main\' or \'2.0.0\'')
+    string(name: 'TACOPLAY_SITE',
+      defaultValue: 'gate-centos-lb-ceph-offline-multinodes',
+      description: 'tacoplay site (inventory) name in tago-gate-inventories repository')
     string(name: 'TARGET_SITE',
-      defaultValue: 'gate-centos-lb-ceph-online-multinodes',
+      defaultValue: 'hanu-reference',
       description: 'target site (inventory) name for manifest preparation')
     string(name: 'INCLUDED_APPS',
       defaultValue: 'openstack,lma,service-mesh',
@@ -33,23 +36,13 @@ pipeline {
   stages {
     stage ('Run') {
       steps {
-        container('common') {
-          checkout([$class: 'GitSCM',
-                branches: [[name: '*/main' ]],
-                extensions: scm.extensions,
-                userRemoteConfigs: [[
-                    url: 'git@github.com:openinfradev/taco-gate-inventories.git',
-                    credentialsId: 'jenkins-to-github-key'
-                ]]
-            ])
           script {
             sh """
-              cp /root/.netrc ~/.netrc
-              yum install -y git iproute net-tools
+	      git clone git@github.com:openinfradev/taco-gate-inventories.git --single-branch
               git clone https://github.com/openinfradev/tacoplay.git
-              cp -r inventories/${params.TARGET_SITE} tacoplay/inventory/
-              cp -r inventories/preparation tacoplay/inventory
-              mkdir ~/agent/docker_images || true
+              cp -r taco-gate-inventories/inventories/${params.TACOPLAY_SITE} tacoplay/inventory
+              cp -r taco-gate-inventories/inventories/preparation tacoplay/inventory
+              mkdir /opt/jenkins/agent/docker_images || true
 
             """
             dir('tacoplay') {
@@ -67,7 +60,7 @@ pipeline {
                     if (! params.TARGET_SITE.startsWith('gate')) {
                       add_openstack_param = true
                     }
-                  } 
+                  }
 
                   if ( index == app_list.length-1 ) {
                     tacoplay_params += "'${app}'"
@@ -83,42 +76,32 @@ pipeline {
               }
 
               println("tacoplay_params: ${tacoplay_params}")
-              repo = sh (
-                script: "cat /etc/hosts|grep tacorepo",
-                returnStatus: true
-              ) 
-              if ( repo == 1 ) {
-                sh (script: "echo 127.0.0.1 tacorepo|tee -a /etc/hosts")
-              }
 
               sh """
                 env | grep PATH
                 ./fetch-sub-projects.sh
                 python --version
-                yum install -y epel-release
-                pip install -r requirements.txt
+		sudo pip3 install --upgrade pip
+		sudo pip3 install -r requirements.txt --upgrade --ignore-installed
 
                 ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall --skip-tags upgrade -e @inventory/preparation/extra-vars.yml -e site_name=${params.TARGET_SITE} ${tacoplay_params}
               """
             }
           }
-        }
       }
     }
 
     stage ('Push artifact') {
       steps {
-        container('common') {
           script {
             sh """
               mv tacoplay.tar.gz tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz
-              mc --quiet -C /root/.mc cp tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz ${env.MINIO}/artifacts/
+              mc --quiet cp tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz tacorepo/tacoplay-artifacts/
 
               echo "tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz" > latest-${params.TARGET_SITE}
-              mc --quiet -C /root/.mc cp latest-${params.TARGET_SITE} ${env.MINIO}/artifacts/
+              mc --quiet cp latest-${params.TARGET_SITE} tacorepo/tacoplay-artifacts/
             """
           }
-        }
       }
     }
 
