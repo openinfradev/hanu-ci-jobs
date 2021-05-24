@@ -1,0 +1,7 @@
+dockerGluster: LOCAL_REGISTRY
+dockerLibraryRegistry: LOCAL_REGISTRY
+e2eRegistry: LOCAL_REGISTRY
+gcRegistry: LOCAL_REGISTRY
+googleContainerRegistry: LOCAL_REGISTRY
+promoterE2eRegistry: LOCAL_REGISTRY
+quayIncubator: LOCAL_REGISTRY
