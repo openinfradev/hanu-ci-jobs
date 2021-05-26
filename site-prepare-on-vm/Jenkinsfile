@@ -10,13 +10,19 @@ pipeline {
   parameters {
     string(name: 'TACOPLAY_VERSION',
       defaultValue: 'main',
-      description: 'branch or tag of tacoplay (Eg, \'main\' or \'2.0.0\'')
+      description: 'tacoplay release tag or branch (Eg, \'main\' or \'2.0.0\'')
     string(name: 'TACOPLAY_SITE',
       defaultValue: 'gate-centos-lb-ceph-offline-multinodes',
       description: 'tacoplay site (inventory) name in tago-gate-inventories repository')
-    string(name: 'TARGET_SITE',
+    string(name: 'DECAPOD_VERSION',
+      defaultValue: 'main',
+      description: 'decapod release tag or branch: main or release-1.0')
+    string(name: 'DECAPOD_PREPARATION_SITE',
       defaultValue: 'hanu-reference',
-      description: 'target site (inventory) name for manifest preparation')
+      description: 'target site name for manifest preparation')
+    string(name: 'DECAPOD_TARGET_SITE',
+      defaultValue: 'hanu-reference-offline',
+      description: 'target site name for real deployment')
     string(name: 'INCLUDED_APPS',
       defaultValue: 'openstack,lma,service-mesh',
       description: 'Apps to include in tarball? (comma-separated list)')
@@ -57,7 +63,7 @@ pipeline {
 
                 app_list.eachWithIndex { app, index ->
                   if ( app == 'openstack') {
-                    if (! params.TARGET_SITE.startsWith('gate')) {
+                    if (! params.DECAPOD_TARGET_SITE.startsWith('gate')) {
                       add_openstack_param = true
                     }
                   }
@@ -72,7 +78,7 @@ pipeline {
               tacoplay_params += "]}'"
 
               if (add_openstack_param) {
-                tacoplay_params += " -e 'site_name=${params.TARGET_SITE} openstack_release=${params.OPENSTACK_RELEASE}'"
+                tacoplay_params += " -e 'site_name=${params.DECAPOD_TARGET_SITE} openstack_release=${params.OPENSTACK_RELEASE}'"
               }
 
               println("tacoplay_params: ${tacoplay_params}")
@@ -84,7 +90,7 @@ pipeline {
 		sudo pip3 install --upgrade pip
 		sudo pip3 install -r requirements.txt --upgrade --ignore-installed
 
-                ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall --skip-tags upgrade -e @inventory/preparation/extra-vars.yml -e site_name=${params.TARGET_SITE} ${tacoplay_params}
+                ansible-playbook -vvv -u root -b -i inventory/preparation/local.ini extra-playbooks/site-prepare.yml --tags download,upload,preinstall --skip-tags upgrade -e @inventory/preparation/extra-vars.yml -e decapod_preperation_site_name=${params.DECAPOD_PREPARATION_SITE} -e site_name=${params.DECAPOD_TARGET_SITE} -e tacoplay_inventory_site=${params.TACOPLAY_SITE} -e decapod_base_yaml_version=${params.DECAPOD_VERSION} -e decapod_site_version=${params.DECAPOD_VERSION} ${tacoplay_params}
               """
             }
           }
@@ -94,12 +100,13 @@ pipeline {
     stage ('Push artifact') {
       steps {
           script {
+            artifact_filename_suffix="_${params.TACOPLAY_VERSION}-decapod_${params.DECAPOD_VERSION}_${params.DECAPOD_PREPARATION_SITE}_${params.DECAPOD_TARGET_SITE}"
             sh """
-              mv tacoplay.tar.gz tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz
-              mc --quiet cp tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz tacorepo/tacoplay-artifacts/
+              mv tacoplay.tar.gz tacoplay-${artifact_filename_suffix}-\$(date +%y%m%d).tar.gz
+              mc --quiet cp tacoplay-${artifact_filename_suffix}-\$(date +%y%m%d).tar.gz tacorepo/tacoplay-artifacts/
 
-              echo "tacoplay-${params.TARGET_SITE}-${params.TACOPLAY_VERSION}-\$(date +%y%m%d).tar.gz" > latest-${params.TARGET_SITE}
-              mc --quiet cp latest-${params.TARGET_SITE} tacorepo/tacoplay-artifacts/
+              echo "tacoplay-${artifact_filename_suffix}-\$(date +%y%m%d).tar.gz" > latest-${params.DECAPOD_TARGET_SITE}
+              mc --quiet cp latest-${params.DECAPOD_TARGET_SITE} tacorepo/tacoplay-artifacts/
             """
           }
       }
