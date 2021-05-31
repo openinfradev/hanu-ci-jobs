@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -x
+
 ALL_IMGS=""
 
 mkdir sonobuoy_imgs

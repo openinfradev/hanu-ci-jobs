@@ -62,6 +62,14 @@ pipeline {
         script {
           sonobuoy_extra_args=""
 
+          // Check if sonobuoy instance already exists //
+          sonobuoy_status = sh(returnStatus: true,
+            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'")
+
+          if (!sonobuoy_status) {
+            sh "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy delete --wait'"
+          }
+
           sh """
             #rm -rf /var/lib/jenkins/.ssh/known_hosts
             cp /opt/jenkins/.ssh/jenkins-slave-hanukey ./jenkins.key
@@ -80,7 +88,11 @@ pipeline {
 
             sh """
               scp -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint}:.kube/config target_kubeconfig
+
+              # ignore erros during pulling images
+	      sudo KUBECONFIG=target_kubeconfig ./sonobuoy images pull || true
               validate-k8s/download_sonobuoy_images.sh
+	      sudo KUBECONFIG=target_kubeconfig ./sonobuoy images | xargs sudo sudo docker image rm || true
 
               sed -i 's/LOCAL_REGISTRY/${local_registry}/g' validate-k8s/custom-registries.yaml
 
@@ -91,14 +103,6 @@ pipeline {
 
             sonobuoy_extra_args="--e2e-repo-config custom-registries.yaml --kube-conformance-image ${local_registry}/conformance:${k8s_version} --sonobuoy-image ${local_registry}/sonobuoy:v${sonobuoy_version} --systemd-logs-image ${local_registry}/systemd-logs:v0.3"
 	  }
-
-          // Check if sonobuoy instance already exists //
-          sonobuoy_status = sh(returnStatus: true,
-            script: "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy status'")
-
-          if (!sonobuoy_status) {
-            sh "ssh -o StrictHostKeyChecking=no -i jenkins.key taco@${endpoint} 'sonobuoy delete --wait'"
-          }
 
           println("*** Starting sonobuoy test ***")
 
