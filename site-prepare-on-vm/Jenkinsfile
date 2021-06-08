@@ -44,7 +44,7 @@ pipeline {
       steps {
           script {
             sh """
-	      git clone git@github.com:openinfradev/taco-gate-inventories.git --single-branch
+	      git clone git@github.com:openinfradev/taco-gate-inventories.git -b add_local-path-provisioner --single-branch
               git clone https://github.com/openinfradev/tacoplay.git
               cp -r taco-gate-inventories/inventories/${params.TACOPLAY_SITE} tacoplay/inventory
               cp -r taco-gate-inventories/inventories/preparation tacoplay/inventory
