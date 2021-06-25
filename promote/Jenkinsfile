@@ -128,17 +128,10 @@ pipeline {
           repos = [
             'openinfradev': [
               'tacoplay',
-              'taco-helm',
               'decapod-flow',
               'decapod-base-yaml',
-              'decapod-site-yaml',
-              'kustomize-helm-transformer',
-              'operator-helm',
-              'taco-gate-inventories',
-              'pipeline-library'
-            ],
-            'sktelecom': [
-              'skt-site-yaml'
+              'decapod-site',
+              'taco-gate-inventories'
             ]
           ]
 
