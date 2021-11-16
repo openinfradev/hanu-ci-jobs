@@ -131,6 +131,8 @@ pipeline {
               'decapod-flow',
               'decapod-base-yaml',
               'decapod-site',
+              'decapod-bootstrap',
+              'helm-charts',
               'taco-gate-inventories'
             ]
           ]
